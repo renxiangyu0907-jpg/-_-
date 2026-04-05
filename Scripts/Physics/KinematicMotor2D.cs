@@ -89,6 +89,15 @@ namespace PlatformerKit.Physics
             rb      = GetComponent<Rigidbody2D>();
             capsule = GetComponent<CapsuleCollider2D>();
 
+            // ---- Config safety ----
+            if (config == null)
+            {
+                Debug.LogError($"[KinematicMotor2D] MotorConfig is not assigned on {gameObject.name}! " +
+                    "Create one via Assets > Create > PlatformerKit > Motor Config, then drag it into the Inspector.");
+                enabled = false;
+                return;
+            }
+
             // ---- Rigidbody safety ----
             rb.bodyType    = RigidbodyType2D.Kinematic;
             rb.useFullKinematicContacts = true; // needed for Cast queries
@@ -133,6 +142,11 @@ namespace PlatformerKit.Physics
             Vector2 horizontalDelta = ProjectOntoSlope(desiredDelta);
             Vector2 hMoved = CastAndSlide(horizontalDelta, true);
 
+            // Sync rb.position so subsequent vertical cast starts from
+            // the post-horizontal position. Without this, vertical cast
+            // would originate from the OLD position and miss geometry.
+            rb.position = startPos + hMoved;
+
             // ============ Phase 3: Vertical Move ============
             Vector2 verticalDelta = new Vector2(0f, desiredDelta.y);
             // On ground, vertical component is absorbed by slope projection.
@@ -140,6 +154,9 @@ namespace PlatformerKit.Physics
             if (isGrounded && desiredDelta.y <= 0f)
                 verticalDelta = Vector2.zero;
             Vector2 vMoved = CastAndSlide(verticalDelta, false);
+
+            // Sync again after vertical pass for ground snap probe.
+            rb.position = startPos + hMoved + vMoved;
 
             // ============ Phase 3.5: Ground Snap ============
             // If we WERE on ground last frame, are NOT grounded now,
@@ -158,7 +175,7 @@ namespace PlatformerKit.Physics
                 platformDelta = currentPlatform.GetFrameDisplacement();
             }
 
-            // ============ Commit Position ============
+            // ============ Commit Final Position ============
             Vector2 totalDelta = hMoved + vMoved + snapDelta + platformDelta;
             Vector2 finalPos   = startPos + totalDelta;
             rb.MovePosition(finalPos);
@@ -199,14 +216,14 @@ namespace PlatformerKit.Physics
             );
 
             int hitCount = Physics2D.CapsuleCast(
-                origin:       rb.position + capsule.offset,
-                size:         probeSize,
+                origin:           rb.position + capsule.offset,
+                size:             probeSize,
                 capsuleDirection: capsule.direction,
-                angle:        0f,
-                direction:    Vector2.down,
-                results:      hitBuffer,
-                distance:     castDistance,
-                contactFilter: contactFilter
+                angle:            0f,
+                direction:        Vector2.down,
+                contactFilter:    contactFilter,
+                results:          hitBuffer,
+                distance:         castDistance
             );
 
             if (hitCount > 0)
@@ -296,6 +313,8 @@ namespace PlatformerKit.Physics
 
                 Vector2 moveDir = remainingDelta / moveMag; // normalized
 
+                // Cast from CURRENT rb.position (which is kept in sync
+                // via rb.position = ... between H/V passes).
                 float castDist = moveMag + config.skinWidth;
                 int hitCount = CapsuleCastFull(moveDir, castDist, hitBuffer);
 
@@ -389,9 +408,9 @@ namespace PlatformerKit.Physics
                 capsule.direction,
                 0f,
                 moveDir,
+                contactFilter,
                 hitBuffer,
-                forwardDist,
-                contactFilter
+                forwardDist
             );
 
             float actualFwd = remainingDist;
@@ -412,9 +431,9 @@ namespace PlatformerKit.Physics
                 capsule.direction,
                 0f,
                 Vector2.down,
+                contactFilter,
                 hitBuffer,
-                downDist,
-                contactFilter
+                downDist
             );
 
             if (downHits == 0) return false; // no ground found: it's a ledge, not a step
@@ -501,9 +520,9 @@ namespace PlatformerKit.Physics
                 capsuleDirection: capsule.direction,
                 angle:            0f,
                 direction:        direction,
+                contactFilter:    contactFilter,
                 results:          results,
-                distance:         distance,
-                contactFilter:    contactFilter
+                distance:         distance
             );
         }
 

@@ -68,6 +68,14 @@ namespace PlatformerKit.Animation
 
         private void OnEnable()
         {
+            if (motor == null || player == null)
+            {
+                Debug.LogWarning($"[SpineAnimBridge] Missing references on {gameObject.name}. " +
+                    "Assign Motor and Player in Inspector.");
+                enabled = false;
+                return;
+            }
+
             // Subscribe to one-shot events
             motor.OnLanded       += HandleLanded;
             motor.OnLeftGround   += HandleLeftGround;
@@ -77,14 +85,22 @@ namespace PlatformerKit.Animation
 
         private void OnDisable()
         {
-            motor.OnLanded       -= HandleLanded;
-            motor.OnLeftGround   -= HandleLeftGround;
-            player.OnJump        -= HandleJump;
-            player.OnFacingChanged -= HandleFacingChanged;
+            if (motor != null)
+            {
+                motor.OnLanded     -= HandleLanded;
+                motor.OnLeftGround -= HandleLeftGround;
+            }
+            if (player != null)
+            {
+                player.OnJump          -= HandleJump;
+                player.OnFacingChanged -= HandleFacingChanged;
+            }
         }
 
         private void LateUpdate()
         {
+            if (motor == null) return;
+
             // Continuous state evaluation (every frame)
             MotorState state = motor.State;
 
