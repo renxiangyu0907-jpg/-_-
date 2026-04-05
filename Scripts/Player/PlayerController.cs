@@ -76,6 +76,14 @@ namespace PlatformerKit.Player
         private void Awake()
         {
             motor = GetComponent<KinematicMotor2D>();
+
+            if (config == null)
+            {
+                Debug.LogError($"[PlayerController] PlayerConfig is not assigned on {gameObject.name}! " +
+                    "Create one via Assets > Create > PlatformerKit > Player Config, then drag it into the Inspector.");
+                enabled = false;
+                return;
+            }
         }
 
         /// <summary>
@@ -119,6 +127,8 @@ namespace PlatformerKit.Player
             // (coyoteTimer is ticked down in Update)
 
             // ================ Landing Detection ================
+            // Uses state from PREVIOUS Move() — this is correct because
+            // wasGrounded is set at the end of last FixedUpdate.
             if (!wasGrounded && state.IsGrounded)
             {
                 velocity.y = 0f;
@@ -190,20 +200,21 @@ namespace PlatformerKit.Player
                 isJumping   = false;
             }
 
-            // ================ Ceiling bonk ================
-            // If motor reports we hit a ceiling (velocity was going up but
-            // State.Velocity.y is ~0 or negative), kill upward velocity.
-            if (velocity.y > 0f && state.Velocity.y <= 0f && !state.IsGrounded)
+            // ================ Feed Motor ================
+            motor.Move(velocity * dt);
+
+            // ================ Ceiling bonk (post-move) ================
+            // Read the UPDATED state AFTER Move() to detect ceiling collision.
+            // If we intended to go up but motor couldn't move us up, we hit ceiling.
+            MotorState postState = motor.State;
+            if (velocity.y > 0f && postState.Velocity.y <= 0.01f && !postState.IsGrounded)
             {
                 velocity.y = 0f;
                 isJumping  = false;
             }
 
-            // ================ Feed Motor ================
-            motor.Move(velocity * dt);
-
             // ================ Post-move bookkeeping ================
-            wasGrounded = state.IsGrounded;
+            wasGrounded = postState.IsGrounded;
             jumpPressed = false; // consumed
         }
 
